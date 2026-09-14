@@ -2,7 +2,7 @@
 
 Lecteur audio façon **Winamp**, écrit en **C++ / Qt6**.
 
-Une fenêtre sans bordure, un spectre animé en temps réel (FFT), un égaliseur 10 bandes qui filtre *vraiment* le son, la recherche YouTube, les web radios, les playlists — et un robothead cust[...]
+Une fenêtre sans bordure, un spectre animé en temps réel (FFT), un égaliseur 10 bandes qui filtre *vraiment* le son, la recherche YouTube, les web radios, les playlists — et un visualiseur ASCII custom
 
 ## Fonctionnalités
 
