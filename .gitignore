@@ -1,0 +1,15 @@
+# Binaire compilé
+/zer0-kristal
+
+# Fichiers objet / de build
+*.o
+*.obj
+*.exe
+Makefile
+CMakeFiles/
+cmake-build-*/
+
+# Fichiers temporaires
+*.log
+*.swp
+.DS_Store
