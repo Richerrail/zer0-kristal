@@ -2,7 +2,7 @@
 
 Lecteur audio façon **Winamp**, écrit en **C++ / Qt6**.
 
-Une fenêtre sans bordure, un spectre animé en temps réel (FFT), un égaliseur 10 bandes qui filtre *vraiment* le son, la recherche YouTube, les web radios, les playlists — et une tête de robot custom au centre du visualiseur.
+Une fenêtre sans bordure, un spectre animé en temps réel (FFT), un égaliseur 10 bandes qui filtre *vraiment* le son, la recherche YouTube, les web radios, les playlists — et un robothead custom dans les visualiseur.
 
 ## Fonctionnalités
 
@@ -73,5 +73,3 @@ main.cpp  →  tout le projet (un seul fichier, simple à lire)
 Le pipeline audio : `ffmpeg` (décode tout) → égaliseur biquad → FFT (spectre live) → `QAudioSink` (son). Le visualiseur affiche le **vrai** spectre de ce qui sort, pas un faux aléatoire.
 
 ## Licence
-
-Choisis la tienne (MIT recommandé). À toi de voir.
