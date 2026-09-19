@@ -171,8 +171,19 @@ public:
         return true;
     }
 
+    void killProc(){
+        QProcess* p = proc;
+        proc = nullptr;
+        if(p){
+            p->disconnect(this);   // stoppe onData/onFinished pour ce processus
+            p->kill();
+            p->waitForFinished(200);
+            p->deleteLater();
+        }
+    }
+
     void stop(){
-        if(proc){ proc->kill(); proc->waitForFinished(200); proc->deleteLater(); proc=nullptr; }
+        killProc();
         if(sink) sink->stop();
         drainTimer->stop();
         fifo.clear();
@@ -188,7 +199,7 @@ public:
 
     void seek(double sec){
         if(currentUrl.isEmpty()) return;
-        if(proc){ proc->kill(); proc->waitForFinished(200); proc->deleteLater(); proc=nullptr; }
+        killProc();
         if(sink) sink->stop();
         fifo.clear();
         sourceEnded = false;
@@ -579,6 +590,7 @@ public:
         loopBtn->setCheckable(true); loopBtn->setChecked(false);
         loopBtn->setToolTip("Boucle (off / toutes / une)");
         visBtn=new QPushButton("🎨 Barres");   visBtn->setObjectName("ctrl");
+        auto* clearBtn=new QPushButton("🗑 Clear"); clearBtn->setObjectName("ctrl");
         auto* open=new QPushButton("📂 Ouvrir"); open->setObjectName("ctrl");
         auto* openMenu = new QMenu(this);
         openMenu->addAction("📂 Ouvrir des fichiers…", this, [this]{ openFiles(); });
@@ -592,7 +604,7 @@ public:
 
         ctrl->addWidget(prev); ctrl->addWidget(play); ctrl->addWidget(stop); ctrl->addWidget(next);
         ctrl->addSpacing(6); ctrl->addWidget(shuffleBtn); ctrl->addWidget(loopBtn);
-        ctrl->addSpacing(12); ctrl->addWidget(open); ctrl->addWidget(urlB); ctrl->addWidget(radio);
+        ctrl->addSpacing(12); ctrl->addWidget(clearBtn); ctrl->addWidget(open); ctrl->addWidget(urlB); ctrl->addWidget(radio);
         ctrl->addWidget(addRadio); ctrl->addWidget(visBtn); ctrl->addWidget(plBtn);
         ctrl->addStretch();
         volSlider=new QSlider(Qt::Horizontal); volSlider->setRange(0,100); volSlider->setValue(80);
@@ -600,7 +612,22 @@ public:
         ctrl->addWidget(new QLabel("🔊")); ctrl->addWidget(volSlider);
         root->addLayout(ctrl);
 
-        connect(play,&QPushButton::clicked,this,[this]{ if(eng) eng->togglePause(); });
+        connect(clearBtn,&QPushButton::clicked,this,[this]{
+            if(eng) eng->stop();
+            queue.clear();
+            playlist->clear();
+            titleLabel->setText("Aucune piste");
+        });
+        connect(play,&QPushButton::clicked,this,[this]{
+            if(!eng) return;
+            if(eng->playing){
+                eng->togglePause();
+            } else if(!queue.isEmpty()){
+                int row = playlist->currentRow();
+                if(row < 0 || row >= queue.size()) row = 0;
+                playIndex(row);
+            }
+        });
         connect(stop,&QPushButton::clicked,this,[this]{ if(eng) eng->stop(); });
         connect(prev,&QPushButton::clicked,this,[this]{ stepTrack(-1); });
         connect(next,&QPushButton::clicked,this,[this]{ stepTrack(+1); });
@@ -698,8 +725,12 @@ public:
     void openFiles(){
         QStringList files = QFileDialog::getOpenFileNames(this,"Ouvrir des fichiers audio", QString(),
             "Audio (*.mp3 *.flac *.wav *.ogg *.m4a *.aac *.opus)");
+        if(files.isEmpty()) return;
+        bool wasEmpty = queue.isEmpty();
         for(auto& f: files){ queue<<f; playlist->addItem(QFileInfo(f).fileName()); }
-        if(!files.isEmpty() && !eng->playing) playIndex(queue.size()-files.size());
+        if(wasEmpty || !eng->playing){
+            playIndex(queue.size() - files.size());
+        }
     }
 
     void openFolder(){
@@ -708,6 +739,7 @@ public:
         static const QStringList exts = {"mp3","flac","wav","ogg","m4a","aac","opus","aiff","aif","ape"};
         QDirIterator it(dir, QDir::Files, QDirIterator::Subdirectories);
         int added = 0;
+        int startIndex = queue.size();
         while(it.hasNext()){
             it.next();
             QFileInfo fi = it.fileInfo();
@@ -717,13 +749,19 @@ public:
                 added++;
             }
         }
-        if(added>0 && !eng->playing) playIndex(queue.size()-added);
+        if(added > 0 && (startIndex == 0 || !eng->playing)){
+            playIndex(startIndex);
+        }
     }
 
     void openURL(){
         bool ok=false;
         QString u=QInputDialog::getText(this,"Ouvrir une URL/stream","URL (web radio, YouTube, flux) :",QLineEdit::Normal,"",&ok);
-        if(ok && !u.isEmpty()){ queue<<u; playlist->addItem(u); playIndex(queue.size()-1); }
+        if(ok && !u.isEmpty()){
+            bool wasEmpty = queue.isEmpty();
+            queue<<u; playlist->addItem(u);
+            if(wasEmpty || !eng->playing) playIndex(queue.size()-1);
+        }
     }
 
     // --- Config (radios + playlists) ---
