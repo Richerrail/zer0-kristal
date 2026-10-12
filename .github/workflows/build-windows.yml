@@ -25,100 +25,97 @@ jobs:
         arch: 'win64_mingw'
         modules: 'qtmultimedia'
 
-    - name: Debug Qt outputs
-      shell: bash
-      run: |
-        echo "qt-path: '${{ steps.qt.outputs.qt-path }}'"
-        echo "qt-install-path: '${{ steps.qt.outputs.qt-install-path }}'"
-        ls -la /c/Qt/ 2>/dev/null || echo "No /c/Qt"
-        ls -la C:/Qt/ 2>/dev/null || echo "No C:/Qt"
-
     - name: Find Qt and Setup Environment
-      shell: bash
+      shell: pwsh
       run: |
-        # Try action outputs first
-        QT_PATH="${{ steps.qt.outputs.qt-path }}"
-        if [ -z "$QT_PATH" ] || [ ! -d "$QT_PATH" ]; then
-          QT_PATH="${{ steps.qt.outputs.qt-install-path }}"
-        fi
+        # Get Qt path from action output
+        $qtPath = "${{ steps.qt.outputs.qt-path }}"
+        $qtInstallPath = "${{ steps.qt.outputs.qt-install-path }}"
         
-        # Fallback: known locations
-        if [ -z "$QT_PATH" ] || [ ! -d "$QT_PATH" ]; then
-          for p in \
-            "C:/Qt/6.6.1/mingw_64" \
-            "/c/Qt/6.6.1/mingw_64" \
-            "C:/Qt/6.6.1/win64_mingw" \
-            "/c/Qt/6.6.1/win64_mingw"; do
-            if [ -d "$p" ] && [ -f "$p/bin/qmake.exe" ]; then
-              QT_PATH="$p"
+        Write-Host "qt-path: '$qtPath'"
+        Write-Host "qt-install-path: '$qtInstallPath'"
+        
+        # Try action outputs first
+        if ($qtPath -and (Test-Path $qtPath)) {
+          $QT_PATH = $qtPath
+        } elseif ($qtInstallPath -and (Test-Path $qtInstallPath)) {
+          $QT_PATH = $qtInstallPath
+        } else {
+          # Known locations
+          $candidates = @(
+            "C:/Qt/6.6.1/mingw_64"
+            "C:/Qt/6.6.1/win64_mingw"
+          )
+          foreach ($p in $candidates) {
+            if (Test-Path "$p/bin/qmake.exe") {
+              $QT_PATH = $p
               break
-            fi
-          done
-        fi
+            }
+          }
+        }
         
         # Fallback: search
-        if [ -z "$QT_PATH" ] || [ ! -d "$QT_PATH" ]; then
-          QMAKE=$(find /c/Qt -name "qmake.exe" -type f 2>/dev/null | head -n 1)
-          if [ -n "$QMAKE" ]; then
-            QT_PATH=$(dirname "$QMAKE")
-            QT_PATH=$(dirname "$QT_PATH")
-          fi
-        fi
+        if (-not $QT_PATH) {
+          $qmake = Get-ChildItem -Path "C:/Qt" -Filter "qmake.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($qmake) {
+            $QT_PATH = $qmake.Directory.Parent.FullName
+          }
+        }
         
-        if [ -z "$QT_PATH" ] || [ ! -d "$QT_PATH" ]; then
-          echo "ERROR: Qt not found!"
+        if (-not $QT_PATH -or -not (Test-Path $QT_PATH)) {
+          Write-Error "ERROR: Qt not found!"
           exit 1
-        fi
+        }
         
-        echo "Found Qt at: $QT_PATH"
-        echo "QT_PATH=$QT_PATH" >> $GITHUB_ENV
+        Write-Host "Found Qt at: $QT_PATH"
+        "QT_PATH=$QT_PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: Configure CMake
-      shell: bash
+      shell: pwsh
       run: |
-        export PATH="$QT_PATH/mingw_64/bin:$PATH"
-        cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH="$QT_PATH" \
-          -DCMAKE_C_COMPILER=gcc \
+        $env:PATH = "$env:QT_PATH/mingw_64/bin;$env:PATH"
+        cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_PREFIX_PATH="$env:QT_PATH" `
+          -DCMAKE_C_COMPILER=gcc `
           -DCMAKE_CXX_COMPILER=g++
 
     - name: Build
-      shell: bash
+      shell: pwsh
       run: |
-        export PATH="$QT_PATH/mingw_64/bin:$PATH"
+        $env:PATH = "$env:QT_PATH/mingw_64/bin;$env:PATH"
         cmake --build build --config Release
 
     - name: Deploy Qt Dependencies (windeployqt)
-      shell: bash
+      shell: pwsh
       run: |
-        WINDEPLOYQT="$QT_PATH/bin/windeployqt.exe"
-        echo "Using windeployqt: $WINDEPLOYQT"
+        $WINDEPLOYQT = "$env:QT_PATH/bin/windeployqt.exe"
+        Write-Host "Using windeployqt: $WINDEPLOYQT"
         
-        export PATH="$QT_PATH/mingw_64/bin:$PATH"
+        $env:PATH = "$env:QT_PATH/mingw_64/bin;$env:PATH"
         
         # Find the executable
-        EXE_PATH=$(find build -name "zer0-kristal.exe" -type f | head -n 1)
-        if [ -z "$EXE_PATH" ]; then
-          echo "ERROR: Executable not found!"
+        $EXE_PATH = Get-ChildItem -Path "build" -Filter "zer0-kristal.exe" -Recurse | Select-Object -First 1
+        if (-not $EXE_PATH) {
+          Write-Error "ERROR: Executable not found!"
           exit 1
-        fi
-        echo "Found executable: $EXE_PATH"
+        }
+        Write-Host "Found executable: $($EXE_PATH.FullName)"
 
-        "$WINDEPLOYQT" --qmldir . --release --compiler-runtime "$EXE_PATH"
+        & $WINDEPLOYQT --qmldir . --release --compiler-runtime $EXE_PATH.FullName
 
     - name: Archive Windows Build
-      shell: bash
+      shell: pwsh
       run: |
-        mkdir -p dist
-        EXE_PATH=$(find build -name "zer0-kristal.exe" -type f | head -n 1)
-        EXE_DIR=$(dirname "$EXE_PATH")
-        echo "Copying from: $EXE_DIR"
-        cp -r "$EXE_DIR"/* dist/ 2>/dev/null || true
-
-        echo "Place ffmpeg.exe and ffprobe.exe in this folder (or in PATH) for audio decoding and duration parsing." > dist/README-windows.txt
-
-        cd dist
-        zip -r ../zer0-kristal-windows-x64.zip *
+        $EXE_PATH = Get-ChildItem -Path "build" -Filter "zer0-kristal.exe" -Recurse | Select-Object -First 1
+        $EXE_DIR = $EXE_PATH.Directory.FullName
+        Write-Host "Copying from: $EXE_DIR"
+        
+        New-Item -ItemType Directory -Force -Path "dist" | Out-Null
+        Copy-Item -Path "$EXE_DIR\*" -Destination "dist\" -Recurse -Force -ErrorAction SilentlyContinue
+        
+        "Place ffmpeg.exe and ffprobe.exe in this folder (or in PATH) for audio decoding and duration parsing." | Out-File -FilePath "dist/README-windows.txt" -Encoding utf8
+        
+        Compress-Archive -Path "dist\*" -DestinationPath "zer0-kristal-windows-x64.zip" -Force
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
