@@ -15,55 +15,48 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up MSVC / Build Environment
-      uses: ilammy/msvc-dev-cmd@v1
-
-    - name: Install Qt
+    - name: Install Qt (MinGW)
       uses: jurplel/install-qt-action@v4
       id: qt
       with:
         version: '6.6.1'
         host: 'windows'
         target: 'desktop'
-        arch: 'win64_msvc2019_64'
-        tools: 'tools_cmake'
+        arch: 'win64_mingw'
         modules: 'qtmultimedia'
 
     - name: Configure CMake
       shell: bash
       run: |
-        cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+        # Use qt-cmake from the Qt installation
+        QT_PATH="${{ steps.qt.outputs.qt-path }}"
+        echo "Qt path: $QT_PATH"
+        
+        # MinGW is in the Qt installation
+        export PATH="$QT_PATH/mingw_64/bin:$PATH"
+        
+        cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH="$QT_PATH" \
+          -DCMAKE_C_COMPILER=gcc \
+          -DCMAKE_CXX_COMPILER=g++
 
     - name: Build
       shell: bash
       run: |
+        QT_PATH="${{ steps.qt.outputs.qt-path }}"
+        export PATH="$QT_PATH/mingw_64/bin:$PATH"
         cmake --build build --config Release
 
     - name: Deploy Qt Dependencies (windeployqt)
       shell: bash
       run: |
-        # The install-qt-action outputs the Qt path in steps.qt.outputs.qt-install-path
-        QT_PATH="${{ steps.qt.outputs.qt-install-path }}"
-        echo "Qt path from action output: $QT_PATH"
-        
+        QT_PATH="${{ steps.qt.outputs.qt-path }}"
         WINDEPLOYQT="$QT_PATH/bin/windeployqt.exe"
-        if [ ! -f "$WINDEPLOYQT" ]; then
-          # Fallback: find it in common locations
-          WINDEPLOYQT=$(find "$QT_PATH" -name "windeployqt.exe" 2>/dev/null | head -n 1)
-        fi
-        if [ ! -f "$WINDEPLOYQT" ]; then
-          WINDEPLOYQT=$(find /c/Qt -name "windeployqt.exe" 2>/dev/null | head -n 1)
-        fi
-        if [ ! -f "$WINDEPLOYQT" ]; then
-          WINDEPLOYQT=$(find C:/Qt -name "windeployqt.exe" 2>/dev/null | head -n 1)
-        fi
-        if [ ! -f "$WINDEPLOYQT" ]; then
-          echo "ERROR: windeployqt not found!"
-          exit 1
-        fi
         echo "Using windeployqt: $WINDEPLOYQT"
-
-        # Find the executable (Ninja puts it in build/ or build/Release/)
+        
+        export PATH="$QT_PATH/mingw_64/bin:$PATH"
+        
+        # Find the executable
         EXE_PATH=$(find build -name "zer0-kristal.exe" -type f | head -n 1)
         if [ -z "$EXE_PATH" ]; then
           echo "ERROR: Executable not found!"
@@ -77,13 +70,11 @@ jobs:
       shell: bash
       run: |
         mkdir -p dist
-        # Find the executable (windeployqt copies DLLs next to it)
         EXE_PATH=$(find build -name "zer0-kristal.exe" -type f | head -n 1)
         EXE_DIR=$(dirname "$EXE_PATH")
         echo "Copying from: $EXE_DIR"
         cp -r "$EXE_DIR"/* dist/ 2>/dev/null || true
 
-        # Also include a README note about ffmpeg
         echo "Place ffmpeg.exe and ffprobe.exe in this folder (or in PATH) for audio decoding and duration parsing." > dist/README-windows.txt
 
         cd dist
