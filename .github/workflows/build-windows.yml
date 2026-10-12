@@ -25,16 +25,49 @@ jobs:
         arch: 'win64_mingw'
         modules: 'qtmultimedia'
 
+    - name: Debug Qt outputs
+      shell: bash
+      run: |
+        echo "qt-path: ${{ steps.qt.outputs.qt-path }}"
+        echo "qt-install-path: ${{ steps.qt.outputs.qt-install-path }}"
+        echo "All env vars with QT:"
+        env | grep -i qt || true
+
+    - name: Find Qt and Configure CMake
+      shell: bash
+      run: |
+        # Find Qt installation - try multiple locations
+        QT_PATH=""
+        for p in \
+          "${{ steps.qt.outputs.qt-path }}" \
+          "${{ steps.qt.outputs.qt-install-path }}" \
+          "C:/Qt/6.6.1/mingw_64" \
+          "/c/Qt/6.6.1/mingw_64" \
+          "C:/Qt/6.6.1/win64_mingw" \
+          "/c/Qt/6.6.1/win64_mingw"; do
+          if [ -d "$p" ] && [ -f "$p/bin/qmake.exe" ]; then
+            QT_PATH="$p"
+            break
+          fi
+        done
+        
+        if [ -z "$QT_PATH" ]; then
+          echo "Searching for Qt..."
+          QT_PATH=$(find /c/Qt -name "qmake.exe" -type f 2>/dev/null | head -n 1 | xargs dirname | xargs dirname)
+        fi
+        
+        if [ -z "$QT_PATH" ]; then
+          echo "ERROR: Qt not found!"
+          exit 1
+        fi
+        
+        echo "Found Qt at: $QT_PATH"
+        echo "QT_PATH=$QT_PATH" >> $GITHUB_ENV
+
     - name: Configure CMake
       shell: bash
       run: |
-        # Use qt-cmake from the Qt installation
-        QT_PATH="${{ steps.qt.outputs.qt-path }}"
-        echo "Qt path: $QT_PATH"
-        
-        # MinGW is in the Qt installation
         export PATH="$QT_PATH/mingw_64/bin:$PATH"
-        
         cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_PREFIX_PATH="$QT_PATH" \
           -DCMAKE_C_COMPILER=gcc \
@@ -43,14 +76,12 @@ jobs:
     - name: Build
       shell: bash
       run: |
-        QT_PATH="${{ steps.qt.outputs.qt-path }}"
         export PATH="$QT_PATH/mingw_64/bin:$PATH"
         cmake --build build --config Release
 
     - name: Deploy Qt Dependencies (windeployqt)
       shell: bash
       run: |
-        QT_PATH="${{ steps.qt.outputs.qt-path }}"
         WINDEPLOYQT="$QT_PATH/bin/windeployqt.exe"
         echo "Using windeployqt: $WINDEPLOYQT"
         
