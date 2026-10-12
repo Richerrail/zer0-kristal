@@ -28,14 +28,14 @@ jobs:
     - name: Debug Qt outputs
       shell: bash
       run: |
-        echo "qt-path output: '${{ steps.qt.outputs.qt-path }}'"
-        echo "qt-install-path output: '${{ steps.qt.outputs.qt-install-path }}'"
+        echo "qt-path: '${{ steps.qt.outputs.qt-path }}'"
+        echo "qt-install-path: '${{ steps.qt.outputs.qt-install-path }}'"
+        ls -la /c/Qt/ 2>/dev/null || echo "No /c/Qt"
+        ls -la C:/Qt/ 2>/dev/null || echo "No C:/Qt"
 
     - name: Find Qt and Setup Environment
       shell: bash
       run: |
-        set -euo pipefail
-        
         # Try action outputs first
         QT_PATH="${{ steps.qt.outputs.qt-path }}"
         if [ -z "$QT_PATH" ] || [ ! -d "$QT_PATH" ]; then
@@ -72,16 +72,6 @@ jobs:
         
         echo "Found Qt at: $QT_PATH"
         echo "QT_PATH=$QT_PATH" >> $GITHUB_ENV
-        
-        # Verify mingw is there
-        if [ ! -d "$QT_PATH/mingw_64/bin" ]; then
-          echo "WARNING: mingw_64 not found at $QT_PATH/mingw_64"
-          # Try to find mingw
-          MINGW=$(find "$QT_PATH" -name "gcc.exe" -type f 2>/dev/null | head -n 1 | xargs dirname 2>/dev/null)
-          if [ -n "$MINGW" ]; then
-            echo "Found MinGW at: $MINGW"
-          fi
-        fi
 
     - name: Configure CMake
       shell: bash
