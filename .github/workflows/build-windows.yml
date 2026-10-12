@@ -91,3 +91,15 @@ jobs:
       with:
         name: zer0-kristal-windows-x64
         path: zer0-kristal-windows-x64.zip
+
+    - name: Create Release (on push to main/master only)
+      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: zer0-kristal-windows-x64.zip
+        tag_name: build-${{ github.run_number }}
+        name: Windows Build ${{ github.run_number }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
