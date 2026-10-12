@@ -20,6 +20,7 @@ jobs:
 
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
+      id: qt
       with:
         version: '6.6.1'
         host: 'windows'
@@ -41,13 +42,14 @@ jobs:
     - name: Deploy Qt Dependencies (windeployqt)
       shell: bash
       run: |
-        # windeployqt is in the Qt installation from install-qt-action
-        # The action sets QT_INSTALL_PATH env var
-        echo "QT_INSTALL_PATH: $QT_INSTALL_PATH"
-        WINDEPLOYQT="$QT_INSTALL_PATH/bin/windeployqt.exe"
+        # The install-qt-action outputs the Qt path in steps.qt.outputs.qt-install-path
+        QT_PATH="${{ steps.qt.outputs.qt-install-path }}"
+        echo "Qt path from action output: $QT_PATH"
+        
+        WINDEPLOYQT="$QT_PATH/bin/windeployqt.exe"
         if [ ! -f "$WINDEPLOYQT" ]; then
-          # Fallback: find it
-          WINDEPLOYQT=$(find "$QT_INSTALL_PATH" -name "windeployqt.exe" 2>/dev/null | head -n 1)
+          # Fallback: find it in common locations
+          WINDEPLOYQT=$(find "$QT_PATH" -name "windeployqt.exe" 2>/dev/null | head -n 1)
         fi
         if [ ! -f "$WINDEPLOYQT" ]; then
           WINDEPLOYQT=$(find /c/Qt -name "windeployqt.exe" 2>/dev/null | head -n 1)
@@ -55,10 +57,18 @@ jobs:
         if [ ! -f "$WINDEPLOYQT" ]; then
           WINDEPLOYQT=$(find C:/Qt -name "windeployqt.exe" 2>/dev/null | head -n 1)
         fi
+        if [ ! -f "$WINDEPLOYQT" ]; then
+          echo "ERROR: windeployqt not found!"
+          exit 1
+        fi
         echo "Using windeployqt: $WINDEPLOYQT"
 
         # Find the executable (Ninja puts it in build/ or build/Release/)
         EXE_PATH=$(find build -name "zer0-kristal.exe" -type f | head -n 1)
+        if [ -z "$EXE_PATH" ]; then
+          echo "ERROR: Executable not found!"
+          exit 1
+        fi
         echo "Found executable: $EXE_PATH"
 
         "$WINDEPLOYQT" --qmldir . --release --compiler-runtime "$EXE_PATH"
