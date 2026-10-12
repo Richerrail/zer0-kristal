@@ -28,41 +28,60 @@ jobs:
     - name: Debug Qt outputs
       shell: bash
       run: |
-        echo "qt-path: ${{ steps.qt.outputs.qt-path }}"
-        echo "qt-install-path: ${{ steps.qt.outputs.qt-install-path }}"
-        echo "All env vars with QT:"
-        env | grep -i qt || true
+        echo "qt-path output: '${{ steps.qt.outputs.qt-path }}'"
+        echo "qt-install-path output: '${{ steps.qt.outputs.qt-install-path }}'"
 
-    - name: Find Qt and Configure CMake
+    - name: Find Qt and Setup Environment
       shell: bash
       run: |
-        # Find Qt installation - try multiple locations
-        QT_PATH=""
-        for p in \
-          "${{ steps.qt.outputs.qt-path }}" \
-          "${{ steps.qt.outputs.qt-install-path }}" \
-          "C:/Qt/6.6.1/mingw_64" \
-          "/c/Qt/6.6.1/mingw_64" \
-          "C:/Qt/6.6.1/win64_mingw" \
-          "/c/Qt/6.6.1/win64_mingw"; do
-          if [ -d "$p" ] && [ -f "$p/bin/qmake.exe" ]; then
-            QT_PATH="$p"
-            break
-          fi
-        done
+        set -euo pipefail
         
-        if [ -z "$QT_PATH" ]; then
-          echo "Searching for Qt..."
-          QT_PATH=$(find /c/Qt -name "qmake.exe" -type f 2>/dev/null | head -n 1 | xargs dirname | xargs dirname)
+        # Try action outputs first
+        QT_PATH="${{ steps.qt.outputs.qt-path }}"
+        if [ -z "$QT_PATH" ] || [ ! -d "$QT_PATH" ]; then
+          QT_PATH="${{ steps.qt.outputs.qt-install-path }}"
         fi
         
-        if [ -z "$QT_PATH" ]; then
+        # Fallback: known locations
+        if [ -z "$QT_PATH" ] || [ ! -d "$QT_PATH" ]; then
+          for p in \
+            "C:/Qt/6.6.1/mingw_64" \
+            "/c/Qt/6.6.1/mingw_64" \
+            "C:/Qt/6.6.1/win64_mingw" \
+            "/c/Qt/6.6.1/win64_mingw"; do
+            if [ -d "$p" ] && [ -f "$p/bin/qmake.exe" ]; then
+              QT_PATH="$p"
+              break
+            fi
+          done
+        fi
+        
+        # Fallback: search
+        if [ -z "$QT_PATH" ] || [ ! -d "$QT_PATH" ]; then
+          QMAKE=$(find /c/Qt -name "qmake.exe" -type f 2>/dev/null | head -n 1)
+          if [ -n "$QMAKE" ]; then
+            QT_PATH=$(dirname "$QMAKE")
+            QT_PATH=$(dirname "$QT_PATH")
+          fi
+        fi
+        
+        if [ -z "$QT_PATH" ] || [ ! -d "$QT_PATH" ]; then
           echo "ERROR: Qt not found!"
           exit 1
         fi
         
         echo "Found Qt at: $QT_PATH"
         echo "QT_PATH=$QT_PATH" >> $GITHUB_ENV
+        
+        # Verify mingw is there
+        if [ ! -d "$QT_PATH/mingw_64/bin" ]; then
+          echo "WARNING: mingw_64 not found at $QT_PATH/mingw_64"
+          # Try to find mingw
+          MINGW=$(find "$QT_PATH" -name "gcc.exe" -type f 2>/dev/null | head -n 1 | xargs dirname 2>/dev/null)
+          if [ -n "$MINGW" ]; then
+            echo "Found MinGW at: $MINGW"
+          fi
+        fi
 
     - name: Configure CMake
       shell: bash
